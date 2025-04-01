@@ -1,3 +1,4 @@
+// Final BookingApp.java with cleaned TableColumns and time dropdowns
 package marketing;
 
 import javafx.application.Application;
@@ -7,172 +8,175 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
-import marketing.model.Film;
 import marketing.model.GroupBooking;
-import marketing.service.FilmSchedulerService;
+import marketing.model.SingleBooking;
 import marketing.service.GroupBookingService;
+import marketing.service.SingleBookingService;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class BookingApp extends Application {
 
-    private final FilmSchedulerService filmService = new FilmSchedulerService();
     private final GroupBookingService groupService = new GroupBookingService();
-    private final ObservableList<GroupBooking> confirmedBookings = FXCollections.observableArrayList();
-    private final ObservableList<Film> scheduledFilms = FXCollections.observableArrayList();
+    private final SingleBookingService singleService = new SingleBookingService();
+    private final ObservableList<GroupBooking> confirmedGroupBookings = FXCollections.observableArrayList();
+    private final ObservableList<SingleBooking> confirmedSingleBookings = FXCollections.observableArrayList();
+
+    private ComboBox<String> createTimeDropdown() {
+        ComboBox<String> timeDropdown = new ComboBox<>();
+        IntStream.range(8, 24).forEach(hour -> {
+            timeDropdown.getItems().add(String.format("%02d:00", hour));
+            timeDropdown.getItems().add(String.format("%02d:30", hour));
+        });
+        timeDropdown.setPromptText("Select Time");
+        return timeDropdown;
+    }
 
     @Override
     public void start(Stage primaryStage) {
         TabPane tabPane = new TabPane();
 
-        // Film Scheduler Tab
-        VBox filmForm = new VBox(10);
-        TextField titleField = new TextField();
-        titleField.setPromptText("Film Title (e.g. Mission2025)");
+        // --- Single Booking Tab ---
+        VBox singleForm = new VBox(10);
+        TextField customerNameField = new TextField();
+        customerNameField.setPromptText("Customer Name");
+        DatePicker singleDate = new DatePicker();
+        ComboBox<String> singleTime = createTimeDropdown();
+        ComboBox<String> singleRoom = new ComboBox<>(FXCollections.observableArrayList("Main Hall - Stalls", "Main Hall - Balcony", "Small Hall", "Rehearsal Room"));
+        singleRoom.setPromptText("Select Room");
+        TextField seatField = new TextField();
+        seatField.setPromptText("Seat Number (e.g. A1)");
+        CheckBox wheelchairBox = new CheckBox("Wheelchair Accessible");
+        Button confirmSingleBtn = new Button("Confirm Single Booking");
+        Label singleStatus = new Label();
 
-        TextField dateField = new TextField();
-        dateField.setPromptText("Screening Date (dd/MM/yyyy HH:mm)");
-
-        TextField costField = new TextField();
-        costField.setPromptText("Cost");
-
-        TextField seatsField = new TextField();
-        seatsField.setPromptText("Available Seats");
-
-        Button scheduleButton = new Button("Schedule Film");
-        Label filmStatus = new Label();
-
-        scheduleButton.setOnAction(e -> {
+        confirmSingleBtn.setOnAction(e -> {
             try {
-                String title = titleField.getText().trim();
-                LocalDateTime screeningTime = LocalDateTime.parse(dateField.getText().trim(),
-                        DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
-                double cost = Double.parseDouble(costField.getText().trim());
-                int seats = Integer.parseInt(seatsField.getText().trim());
+                LocalDate date = singleDate.getValue();
+                String timeStr = singleTime.getValue();
+                if (date == null || timeStr == null) {
+                    singleStatus.setText("⚠️ Select date and time."); return;
+                }
+                LocalDateTime bookingTime = LocalDateTime.of(date, LocalTime.parse(timeStr));
+                String name = customerNameField.getText().trim();
+                String seat = seatField.getText().trim();
+                String room = singleRoom.getValue();
+                boolean wheelchair = wheelchairBox.isSelected();
 
-                Film film = new Film(title, screeningTime, cost, seats);
-                boolean scheduled = filmService.scheduleFilm(film);
+                if (room == null || room.isEmpty()) { singleStatus.setText("⚠️ Select a room."); return; }
+                if (seat.matches("R.*")) { singleStatus.setText("❌ Restricted view seat."); return; }
+                if (wheelchair && !(seat.startsWith("A") || seat.startsWith("L") || seat.endsWith("1") || seat.endsWith("10"))) {
+                    singleStatus.setText("⚠️ Accessible seats only on Row A/L or edges."); return;
+                }
 
-                if (scheduled) {
-                    filmStatus.setText("✅ Film scheduled successfully.");
-                    scheduledFilms.add(film); // Add to observable list
+                SingleBooking booking = new SingleBooking(name, bookingTime, seat + " (" + room + ")");
+                if (singleService.confirmSingleBooking(booking)) {
+                    confirmedSingleBookings.add(booking);
+                    singleStatus.setText("✅ Booking confirmed.");
                 } else {
-                    filmStatus.setText("❌ Time slot unavailable.");
+                    singleStatus.setText("❌ Seat taken.");
                 }
             } catch (Exception ex) {
-                filmStatus.setText("⚠️ Invalid input. Please try again.");
+                singleStatus.setText("⚠️ Invalid input.");
             }
         });
 
-        filmForm.getChildren().addAll(titleField, dateField, costField, seatsField, scheduleButton, filmStatus);
-        filmForm.setStyle("-fx-padding: 20;");
-        Tab filmTab = new Tab("Schedule Film", filmForm);
+        singleForm.getChildren().addAll(customerNameField, singleDate, singleTime, singleRoom, seatField, wheelchairBox, confirmSingleBtn, singleStatus);
+        Tab singleTab = new Tab("Single Booking", singleForm);
 
-        // Group Booking Tab
+        // --- Group Booking Tab ---
         VBox groupForm = new VBox(10);
-        TextField groupNameField = new TextField();
-        groupNameField.setPromptText("Group Name");
-
-        TextField groupSizeField = new TextField();
-        groupSizeField.setPromptText("Group Size (must be 12 or more)");
-
-        TextField groupTimeField = new TextField();
-        groupTimeField.setPromptText("Booking Date (dd/MM/yyyy HH:mm)");
-
-        TextField heldRowsField = new TextField();
-        heldRowsField.setPromptText("Held Rows (comma-separated e.g. A1,A2)");
-
-        Button holdGroupButton = new Button("Hold Group Booking");
-        Button confirmGroupButton = new Button("Confirm Group Booking");
+        TextField groupName = new TextField();
+        groupName.setPromptText("Group Name");
+        TextField groupSize = new TextField();
+        groupSize.setPromptText("Group Size");
+        DatePicker groupDate = new DatePicker();
+        ComboBox<String> groupTime = createTimeDropdown();
+        ComboBox<String> groupRoom = new ComboBox<>(FXCollections.observableArrayList("Main Hall - Stalls", "Main Hall - Balcony", "Small Hall", "Rehearsal Room", "Meeting Room 1", "Meeting Room 2", "Meeting Room 3", "Meeting Room 4", "Meeting Room 5"));
+        groupRoom.setPromptText("Select Room");
+        TextField heldRows = new TextField();
+        heldRows.setPromptText("Held Rows (e.g. A1,A2)");
+        Button holdBtn = new Button("Hold Group Booking");
+        Button confirmBtn = new Button("Confirm Group Booking");
         Label groupStatus = new Label();
 
-        holdGroupButton.setOnAction(e -> {
+        holdBtn.setOnAction(e -> {
             try {
-                String name = groupNameField.getText().trim();
-                int size = Integer.parseInt(groupSizeField.getText().trim());
-                LocalDateTime time = LocalDateTime.parse(groupTimeField.getText().trim(),
-                        DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
-                String[] heldRows = heldRowsField.getText().trim().split(",");
-                GroupBooking booking = new GroupBooking(name, size, time, Arrays.asList(heldRows));
-
-                boolean held = groupService.holdGroupBooking(booking);
-                if (held) {
-                    groupStatus.setText("✅ Group booking held.");
+                int size = Integer.parseInt(groupSize.getText().trim());
+                LocalDate date = groupDate.getValue();
+                String timeStr = groupTime.getValue();
+                if (size < 12) { groupStatus.setText("❌ Group size must be 12+"); return; }
+                if (date == null || timeStr == null) { groupStatus.setText("⚠️ Select date and time."); return; }
+                String room = groupRoom.getValue();
+                if (room == null || room.isEmpty()) { groupStatus.setText("⚠️ Select a room."); return; }
+                List<String> rows = Arrays.asList(heldRows.getText().trim().split(","));
+                if (rows.stream().anyMatch(r -> r.trim().matches("R.*"))) {
+                    groupStatus.setText("❌ Cannot hold restricted view rows."); return;
+                }
+                LocalDateTime bookingTime = LocalDateTime.of(date, LocalTime.parse(timeStr));
+                GroupBooking booking = new GroupBooking(groupName.getText().trim() + " (" + room + ")", size, bookingTime, rows);
+                if (groupService.holdGroupBooking(booking)) {
+                    groupStatus.setText("✅ Held successfully.");
                 } else {
-                    groupStatus.setText("❌ Group size must be 12 or more.");
+                    groupStatus.setText("❌ Booking failed.");
                 }
             } catch (Exception ex) {
-                groupStatus.setText("⚠️ Invalid input. Please try again.");
+                groupStatus.setText("⚠️ Invalid input.");
             }
         });
 
-        confirmGroupButton.setOnAction(e -> {
-            String name = groupNameField.getText().trim();
-            boolean confirmed = groupService.confirmGroupBooking(name);
-            if (confirmed) {
-                groupStatus.setText("✅ Group booking confirmed.");
+        confirmBtn.setOnAction(e -> {
+            String name = groupName.getText().trim();
+            if (groupService.confirmGroupBooking(name)) {
                 groupService.getAllBookings().stream()
                         .filter(b -> b.getGroupName().equals(name) && "Confirmed".equals(b.getStatus()))
-                        .findFirst()
-                        .ifPresent(confirmedBookings::add);
+                        .findFirst().ifPresent(confirmedGroupBookings::add);
+                groupStatus.setText("✅ Group confirmed.");
             } else {
-                groupStatus.setText("❌ No held booking found for that group name.");
+                groupStatus.setText("❌ No held booking.");
             }
         });
 
-        groupForm.getChildren().addAll(groupNameField, groupSizeField, groupTimeField, heldRowsField,
-                holdGroupButton, confirmGroupButton, groupStatus);
-        groupForm.setStyle("-fx-padding: 20;");
+        groupForm.getChildren().addAll(groupName, groupSize, groupDate, groupTime, groupRoom, heldRows, holdBtn, confirmBtn, groupStatus);
         Tab groupTab = new Tab("Group Booking", groupForm);
 
-        // Confirmed Bookings Tab
-        TableView<GroupBooking> bookingTable = new TableView<>(confirmedBookings);
-        TableColumn<GroupBooking, String> nameCol = new TableColumn<>("Group Name");
-        nameCol.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(data.getValue().getGroupName()));
+        // --- Confirmed Bookings Tab ---
+        VBox confirmedView = new VBox(10);
+        Label groupLabel = new Label("Confirmed Group Bookings:");
+        TableView<GroupBooking> groupTable = new TableView<>(confirmedGroupBookings);
+        TableColumn<GroupBooking, String> groupNameCol = new TableColumn<>("Group Name");
+        groupNameCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue().getGroupName()));
+        TableColumn<GroupBooking, String> groupDateCol = new TableColumn<>("Date");
+        groupDateCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue().getBookingTime().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))));
+        TableColumn<GroupBooking, String> groupSizeCol = new TableColumn<>("Size");
+        groupSizeCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(String.valueOf(d.getValue().getGroupSize())));
+        TableColumn<GroupBooking, String> heldRowsCol = new TableColumn<>("Held Rows");
+        heldRowsCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(String.join(", ", d.getValue().getHeldRows())));
+        groupTable.getColumns().addAll(groupNameCol, groupDateCol, groupSizeCol, heldRowsCol);
 
-        TableColumn<GroupBooking, String> sizeCol = new TableColumn<>("Size");
-        sizeCol.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(String.valueOf(data.getValue().getGroupSize())));
+        Label singleLabel = new Label("Confirmed Single Bookings:");
+        TableView<SingleBooking> singleTable = new TableView<>(confirmedSingleBookings);
+        TableColumn<SingleBooking, String> customerCol = new TableColumn<>("Customer Name");
+        customerCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue().getCustomerName()));
+        TableColumn<SingleBooking, String> singleDateCol = new TableColumn<>("Date");
+        singleDateCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue().getBookingTime().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))));
+        TableColumn<SingleBooking, String> seatCol = new TableColumn<>("Seat");
+        seatCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue().getSeatNumber()));
+        singleTable.getColumns().addAll(customerCol, singleDateCol, seatCol);
 
-        TableColumn<GroupBooking, String> timeCol = new TableColumn<>("Date");
-        timeCol.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
-                data.getValue().getBookingTime().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))));
+        confirmedView.getChildren().addAll(groupLabel, groupTable, singleLabel, singleTable);
+        Tab confirmedTab = new Tab("Confirmed Bookings", confirmedView);
 
-        TableColumn<GroupBooking, String> rowsCol = new TableColumn<>("Held Rows");
-        rowsCol.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
-                String.join(", ", data.getValue().getHeldRows())));
-
-        bookingTable.getColumns().addAll(nameCol, sizeCol, timeCol, rowsCol);
-        VBox bookingView = new VBox(bookingTable);
-        bookingView.setStyle("-fx-padding: 20;");
-        Tab confirmedTab = new Tab("Confirmed Bookings", bookingView);
-
-        // Scheduled Films Tab (Live Updating)
-        TableView<Film> filmTable = new TableView<>(scheduledFilms);
-        TableColumn<Film, String> filmTitleCol = new TableColumn<>("Title");
-        filmTitleCol.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(data.getValue().getTitle()));
-
-        TableColumn<Film, String> filmTimeCol = new TableColumn<>("Screening Time");
-        filmTimeCol.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(
-                data.getValue().getScreeningTime().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))));
-
-        TableColumn<Film, String> filmCostCol = new TableColumn<>("Cost");
-        filmCostCol.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(String.valueOf(data.getValue().getCost())));
-
-        TableColumn<Film, String> filmSeatsCol = new TableColumn<>("Seats");
-        filmSeatsCol.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(String.valueOf(data.getValue().getAvailableSeats())));
-
-        filmTable.getColumns().addAll(filmTitleCol, filmTimeCol, filmCostCol, filmSeatsCol);
-        VBox filmView = new VBox(filmTable);
-        filmView.setStyle("-fx-padding: 20;");
-        Tab scheduledTab = new Tab("Scheduled Films", filmView);
-
-        // Add all tabs
-        tabPane.getTabs().addAll(filmTab, groupTab, confirmedTab, scheduledTab);
-        Scene scene = new Scene(tabPane, 600, 450);
+        tabPane.getTabs().addAll(singleTab, groupTab, confirmedTab);
+        primaryStage.setScene(new Scene(tabPane, 750, 600));
         primaryStage.setTitle("Marketing Booking System");
-        primaryStage.setScene(scene);
         primaryStage.show();
     }
 
