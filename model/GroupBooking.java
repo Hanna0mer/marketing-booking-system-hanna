@@ -9,6 +9,7 @@ public class GroupBooking {
     private LocalDateTime bookingTime;
     private List<String> heldRows;
     private String status;
+    private double price;
 
     public GroupBooking(String groupName, int groupSize, LocalDateTime bookingTime, List<String> heldRows) {
         this.groupName = groupName;
@@ -40,5 +41,13 @@ public class GroupBooking {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public double getPrice() {
+        return price;
+    }
+
+    public void setPrice(double price) {
+        this.price = price;
     }
 }
