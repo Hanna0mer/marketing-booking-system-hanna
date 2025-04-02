@@ -67,6 +67,17 @@ public class BookingApp extends Application {
         }
     }
 
+    // Check if a seat is already booked
+    private boolean isSeatBooked(String seat, LocalDateTime time) {
+        return confirmedSingleBookings.stream().anyMatch(b -> b.getSeatNumber().contains(seat) && b.getBookingTime().equals(time)) ||
+                confirmedGroupBookings.stream().anyMatch(b -> b.getBookingTime().equals(time) && b.getHeldRows().contains(seat));
+    }
+
+    // Filter out already booked seats from a list
+    private List<String> filterAvailableSeats(List<String> seats, LocalDateTime time) {
+        return seats.stream().filter(seat -> !isSeatBooked(seat, time)).collect(Collectors.toList());
+    }
+
     // Parse seat range like A1-G15 or B3-L18
     private List<String> parseSeatRange(String input) {
         List<String> seats = new ArrayList<>();
@@ -90,7 +101,7 @@ public class BookingApp extends Application {
         }
         return seats;
     }
-}
+
 
 
 
@@ -166,7 +177,7 @@ public void start(Stage primaryStage) {
         double price = calculateSinglePrice(room, bookingTime);
         SingleBooking booking = new SingleBooking(name, bookingTime, seat + " (" + room + ")");
         booking.setPrice(price);
-        if (singleService.confirmSingleBooking(booking)) {
+        if (!isSeatBooked(seat, bookingTime) && singleService.confirmSingleBooking(booking)) {
         confirmedSingleBookings.add(booking);
         singleStatus.setText("✅ Booking confirmed. Price: £" + String.format("%.2f", price));
         } else {
@@ -188,34 +199,30 @@ public void start(Stage primaryStage) {
         groupSize.setPromptText("Group Size");
         DatePicker groupDate = new DatePicker();
         ComboBox<String> groupTime = createTimeDropdown();
-        ComboBox<String> groupRoom = new ComboBox<>(FXCollections.observableArrayList("Main Hall - Stalls", "Main Hall - Balcony", "Small Hall", "Rehearsal Room", "Meeting Room 1", "Meeting Room 2", "Meeting Room 3", "Meeting Room 4", "Meeting Room 5"));
+        ComboBox<String> groupRoom = new ComboBox<>();
         groupRoom.setPromptText("Select Room");
-        TextField rangeField = new TextField();
-        rangeField.setPromptText("Seat Range (e.g. A1-G15)");
-        seatSelector.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-        Label priceLabel = new Label("Total Price: £0.00");
-
-        groupRoom.setOnAction(e -> {
-        seatSelector.getItems().clear();
-        groupStatus.setText("");
-        if (groupRoom.getValue() != null && !groupSize.getText().isEmpty()) {
+        groupSize.textProperty().addListener((obs, oldVal, newVal) -> {
         try {
-        int size = Integer.parseInt(groupSize.getText().trim());
-        List<String> possibleSeats = generateSeatsForRoom(groupRoom.getValue());
-        if (possibleSeats.size() >= size) {
-        seatSelector.getItems().addAll(possibleSeats);
-        } else {
-        groupStatus.setText("❌ Room cannot fit this group size.");
-        }
-        } catch (NumberFormatException ex) {
-        groupStatus.setText("⚠️ Enter a valid group size.");
-        }
+        int size = Integer.parseInt(newVal);
+        List<String> rooms = new ArrayList<>();
+        if (size >= 60) rooms.addAll(List.of("Main Hall - Stalls", "Main Hall - Balcony"));
+        else if (size >= 30) rooms.addAll(List.of("Small Hall"));
+        else if (size >= 12) rooms.addAll(List.of("Rehearsal Room", "Meeting Room 1", "Meeting Room 2", "Meeting Room 3", "Meeting Room 4", "Meeting Room 5"));
+        groupRoom.setItems(FXCollections.observableArrayList(rooms));
+        } catch (NumberFormatException ignored) {
+        groupRoom.setItems(FXCollections.observableArrayList());
         }
         });
-
+        TextField rangeField = new TextField();
+        rangeField.setPromptText("Seat Range (e.g. A1-G15)");
+        Label priceLabel = new Label("Total Price: £0.00");
         Button holdBtn = new Button("Hold Group Booking");
         Button confirmBtn = new Button("Confirm Group Booking");
-        Label groupStatus = new Label();
+
+        groupRoom.setOnAction(e -> {
+        groupStatus.setText("");
+        priceLabel.setText("Total Price: £0.00");
+        });
 
         holdBtn.setOnAction(e -> {
         try {
@@ -226,9 +233,13 @@ public void start(Stage primaryStage) {
         if (date == null || timeStr == null) { groupStatus.setText("⚠️ Select date and time."); return; }
         String room = groupRoom.getValue();
         if (room == null || room.isEmpty()) { groupStatus.setText("⚠️ Select a room."); return; }
-        List<String> selectedSeats = parseSeatRange(rangeField.getText().trim());
+        List<String> allSeats = parseSeatRange(rangeField.getText().trim());
+        List<String> selectedSeats = filterAvailableSeats(allSeats, LocalDateTime.of(date, LocalTime.parse(timeStr)));
+        if (selectedSeats.size() < allSeats.size()) {
+        groupStatus.setText("⚠️ Some seats in your range are already booked and have been excluded.");
+        }
         if (selectedSeats.isEmpty()) {
-        groupStatus.setText("❌ Select seats to hold."); return;
+        groupStatus.setText("❌ Invalid or empty seat range."); return;
         }
         if (selectedSeats.stream().anyMatch(r -> r.trim().matches("R.*"))) {
         groupStatus.setText("❌ Cannot hold restricted view seats."); return;
@@ -238,7 +249,7 @@ public void start(Stage primaryStage) {
         priceLabel.setText("Total Price: £" + String.format("%.2f", price));
         GroupBooking booking = new GroupBooking(groupName.getText().trim() + " (" + room + ")", size, bookingTime, selectedSeats);
         booking.setPrice(price);
-        if (groupService.holdGroupBooking(booking)) {
+        if (!selectedSeats.isEmpty() && groupService.holdGroupBooking(booking)) {
         groupStatus.setText("✅ Held successfully.");
         } else {
         groupStatus.setText("❌ Booking failed.");
@@ -260,7 +271,7 @@ public void start(Stage primaryStage) {
         }
         });
 
-        groupForm.getChildren().addAll(groupName, groupSize, groupDate, groupTime, groupRoom, rangeField, priceLabel, holdBtn, confirmBtn, groupStatus););
+        groupForm.getChildren().addAll(groupName, groupSize, groupDate, groupTime, groupRoom, rangeField, priceLabel, holdBtn, confirmBtn, groupStatus);
         Tab groupTab = new Tab("Group Booking", groupForm);
 
 
