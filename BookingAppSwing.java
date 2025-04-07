@@ -206,6 +206,7 @@ public class BookingAppSwing extends JFrame {
 
     private JPanel createGroupBookingPanel() {
         JPanel panel = new JPanel(new BorderLayout());
+        panel.setLayout(new GridLayout(0, 2, 10, 10));
 
         JPanel form = new JPanel(new GridLayout(0, 2, 10, 10));
         JTextField groupName = new JTextField();
@@ -290,7 +291,16 @@ public class BookingAppSwing extends JFrame {
             }
         });
 
-        roomBox.addActionListener(e -> updateSeatGrid.run());
+        roomBox.addActionListener(e -> {
+            String selected = (String) roomBox.getSelectedItem();
+            boolean isMeetingOrRehearsal = selected != null &&
+                    (meetingRoomData.containsKey(selected) || selected.equals("Rehearsal Room"));
+
+            sessionBox.setVisible(isMeetingOrRehearsal);
+            sessionLabel.setVisible(isMeetingOrRehearsal);
+            if (isMeetingOrRehearsal) sessionBox.setSelectedIndex(0);
+        });
+
         timeBox.addActionListener(e -> updateSeatGrid.run());
         dateSpinner.addChangeListener(e -> updateSeatGrid.run());
 
@@ -306,6 +316,7 @@ public class BookingAppSwing extends JFrame {
                 String room = (String) roomBox.getSelectedItem();
                 String session = (String) sessionBox.getSelectedItem(); // NEW: session type
                 boolean isMeetingRoom = meetingRoomData.containsKey(room);
+                boolean isRehearsal = room.equals("Rehearsal Room");
 
                 if (size < 12 || date == null || timeStr == null || room == null || room.isEmpty()) {
                     groupStatus.setText("⚠️ Fill all fields correctly.");
