@@ -1,4 +1,3 @@
-// SingleBooking.java with price support
 package marketing.model;
 
 import java.time.LocalDateTime;
@@ -15,23 +14,9 @@ public class SingleBooking {
         this.seatNumber = seatNumber;
     }
 
-    public String getCustomerName() {
-        return customerName;
-    }
-
-    public LocalDateTime getBookingTime() {
-        return bookingTime;
-    }
-
-    public String getSeatNumber() {
-        return seatNumber;
-    }
-
-    public double getPrice() {
-        return price;
-    }
-
-    public void setPrice(double price) {
-        this.price = price;
-    }
+    public String getCustomerName() { return customerName; }
+    public LocalDateTime getBookingTime() { return bookingTime; }
+    public String getSeatNumber() { return seatNumber; }
+    public double getPrice() { return price; }
+    public void setPrice(double price) { this.price = price; }
 }

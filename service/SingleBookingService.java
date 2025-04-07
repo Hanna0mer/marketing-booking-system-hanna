@@ -1,30 +1,21 @@
 package marketing.service;
 
+import marketing.db.MySQLDatabaseHelper;
 import marketing.model.SingleBooking;
-
-import java.util.ArrayList;
-import java.util.List;
+import java.sql.Timestamp;
 
 public class SingleBookingService {
-
-    private final List<SingleBooking> confirmedBookings = new ArrayList<>();
-
     public boolean confirmSingleBooking(SingleBooking booking) {
-        // Prevent double booking of the same seat at the same time
-        boolean seatTaken = confirmedBookings.stream()
-                .anyMatch(existing ->
-                        existing.getSeatNumber().equalsIgnoreCase(booking.getSeatNumber())
-                                && existing.getBookingTime().equals(booking.getBookingTime()));
+        String customerName = booking.getCustomerName();
+        Timestamp bookingTime = Timestamp.valueOf(booking.getBookingTime()); // Convert LocalDateTime to Timestamp
+        String seatNumber = extractSeatNumber(booking.getSeatNumber());
+        double price = booking.getPrice();
 
-        if (seatTaken) {
-            return false; // Seat is already booked
-        }
-
-        confirmedBookings.add(booking);
-        return true;
+        MySQLDatabaseHelper.saveSingleBooking(customerName, bookingTime, seatNumber, price);
+        return true; // Success assumed if no exception
     }
 
-    public List<SingleBooking> getAllConfirmedBookings() {
-        return confirmedBookings;
+    private String extractSeatNumber(String fullSeat) {
+        return fullSeat.split(" ")[0]; // e.g., "A1" from "A1 (Main Hall - Stalls)"
     }
 }

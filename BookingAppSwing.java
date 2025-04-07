@@ -6,6 +6,10 @@ import marketing.model.SingleBooking;
 import marketing.service.GroupBookingService;
 import marketing.service.SingleBookingService;
 
+import marketing.db.MySQLDatabaseHelper;
+import java.sql.Timestamp;
+
+
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -159,7 +163,11 @@ public class BookingAppSwing extends JFrame {
                 double price = calculateSinglePrice(room, bookingTime);
                 SingleBooking booking = new SingleBooking(name, bookingTime, selectedSeat + " (" + room + ")");
                 booking.setPrice(price);
-                if (!isSeatBooked(selectedSeat, bookingTime) && singleService.confirmSingleBooking(booking)) {
+
+                System.out.println("Attempting to confirm: " + name + ", " + bookingTime + ", " + selectedSeat + ", " + price);
+                boolean isSeatAvailable = !isSeatBooked(selectedSeat, bookingTime);
+                System.out.println("Is seat available? " + isSeatAvailable);
+                if (isSeatAvailable && singleService.confirmSingleBooking(booking)) {
                     confirmedSingleBookings.add(booking);
                     singleModel.addRow(new Object[]{
                             booking.getCustomerName(),
@@ -168,11 +176,16 @@ public class BookingAppSwing extends JFrame {
                             "£" + String.format("%.2f", booking.getPrice())
                     });
                     status.setText("✅ Booking confirmed. Price: £" + String.format("%.2f", price));
+                    System.out.println("Seat numeber: " + booking.getSeatNumber());
+                    //MySQLDatabaseHelper.saveSingleBooking(booking.getCustomerName(), Timestamp.valueOf(bookingTime), booking.getSeatNumber(), booking.getPrice());
+                    System.out.println("Booking confirmed in UI");
                 } else {
                     status.setText("❌ Seat taken.");
+                    System.out.println("Booking rejected: seat taken or service failed");
                 }
             } catch (Exception ex) {
                 status.setText("⚠️ Invalid input.");
+                System.out.println("Exception in confirm: " + ex.getMessage());
             }
         });
 
@@ -370,6 +383,7 @@ public class BookingAppSwing extends JFrame {
             if (groupService.confirmGroupBooking(fullName)) {
                 groupService.getAllBookings().stream().filter(b -> b.getGroupName().equals(fullName) && "Confirmed".equals(b.getStatus())).findFirst().ifPresent(booking -> {
                     confirmedGroupBookings.add(booking);
+
                     groupModel.addRow(new Object[]{
                             booking.getGroupName(),
                             booking.getBookingTime().format(formatter),
@@ -377,6 +391,23 @@ public class BookingAppSwing extends JFrame {
                             String.join(", ", booking.getHeldRows()),
                             "£" + String.format("%.2f", booking.getPrice())
                     });
+                            // ✅ SAVE to MySQL here
+                    try {
+                        MySQLDatabaseHelper.saveGroupBooking(
+                                booking.getGroupName(),
+                                booking.getGroupSize(),
+                                Timestamp.valueOf(booking.getBookingTime()),
+                                String.join(",", booking.getHeldRows()),
+                                booking.getPrice(),
+                                "Confirmed"
+                        );
+                        System.out.println("✅ Group booking saved to MySQL");
+                    } catch (Exception ex) {
+                        System.out.println("❌ Error saving group booking to MySQL:");
+                        ex.printStackTrace();
+                    }
+
+
                 });
                 groupStatus.setText("✅ Group confirmed.");
             } else groupStatus.setText("❌ No held booking.");
